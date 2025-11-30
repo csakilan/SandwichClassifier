@@ -1,38 +1,53 @@
-# AWS Setup Instructions
+# AWS Setup Instructions - EC2 Polling Method
 
 ## Required AWS Resources
 
 ### 1. S3 Bucket
-**Name to create:** `images-1`
-- This bucket will store uploaded images
-- Configure S3 trigger to invoke the Lambda function on object creation
+**Name to create:** `default-images-1`
+
+**Folder structure to create:**
+- `uploads/` - Upload new images here
+- `processed/` - Processed images are automatically moved here
 
 ### 2. DynamoDB Table
-**Name to create:** `storage1`
-- **Primary Key:** `image_key` (String)
-- **Sort Key (optional):** `timestamp` (String)
+**Name to create:** `default-storage1`
+- **Partition Key:** `id` (String)
+- **Sort Key:** None (leave empty)
 
 **Table Schema:**
-- `image_key`: S3 object key (e.g., "images/sandwich1.jpg")
-- `timestamp`: ISO format timestamp of classification
-- `is_sandwich`: Boolean (true/false)
-- `classification`: String ("SANDWICH" or "NOT_SANDWICH")
-- `confidence`: String (confidence score if sandwich detected)
-- `predictions`: JSON string with full prediction details
-- `bucket`: Source S3 bucket name
+- `id`: Image filename (e.g., "sandwich1.jpg") - Partition Key
+- `result`: "SANDWICH" or "NOT_SANDWICH"
 
-### 3. Lambda Function Setup
-1. Create a new Lambda function (Python 3.9+)
-2. Upload the code from `AWSConnectors.py`
-3. Set environment variable: `ROBOFLOW_API_KEY` with your API key
-4. Increase timeout to at least 30 seconds
-5. Increase memory to at least 512 MB
+### 3. EC2 Instance Setup
+**No Lambda needed!** Just an EC2 instance running your Python script.
 
-**Required Lambda Layers:**
-- boto3 (usually included)
-- inference-sdk (need to create custom layer)
+**Steps:**
+1. Launch an EC2 instance (t2.micro is fine for testing)
+2. SSH into your instance
+3. Install Python and dependencies:
+   ```bash
+   sudo yum update -y  # or apt-get for Ubuntu
+   sudo yum install python3 python3-pip -y
+   pip3 install boto3 inference-sdk
+   ```
+4. Upload `AWSConnectors.py` to the instance
+5. Configure AWS credentials:
+   ```bash
+   aws configure
+   # Enter your AWS Access Key ID, Secret Key, and region
+   ```
+6. Run the monitoring script:
+   ```bash
+   python3 AWSConnectors.py
+   ```
 
-**IAM Role Permissions:**
+**To run in background (keeps running after you disconnect):**
+```bash
+nohup python3 AWSConnectors.py > output.log 2>&1 &
+```
+
+**IAM Role/Policy for EC2:**
+Attach this policy to your EC2 instance's IAM role:
 ```json
 {
   "Version": "2012-10-17",
@@ -40,38 +55,48 @@
     {
       "Effect": "Allow",
       "Action": [
-        "s3:GetObject"
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:PutObject",
+        "s3:DeleteObject"
       ],
-      "Resource": "arn:aws:s3:::images-1/*"
+      "Resource": [
+        "arn:aws:s3:::default-images-1",
+        "arn:aws:s3:::default-images-1/*"
+      ]
     },
     {
       "Effect": "Allow",
       "Action": [
-        "dynamodb:PutItem"
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
       ],
-      "Resource": "arn:aws:dynamodb:*:*:table/storage1"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "arn:aws:logs:*:*:*"
+      "Resource": "arn:aws:dynamodb:*:*:table/default-storage1"
     }
   ]
 }
 ```
 
-### 4. S3 Event Trigger Configuration
-- **Event type:** All object create events
-- **Prefix (optional):** Leave empty or specify folder
-- **Suffix (optional):** `.jpg`, `.jpeg`, `.png`
-
 ## How It Works
-1. Upload an image to the S3 bucket `images-1`
-2. S3 triggers the Lambda function automatically
-3. Lambda downloads the image, runs classification
-4. Results are stored in DynamoDB table `storage1`
-5. You can query the DynamoDB table to see all classification results
+1. Upload an image to the S3 bucket `default-images-1` in the `uploads/` folder
+2. EC2 instance checks the `uploads/` folder every 30 seconds
+3. When a new image is found:
+   - Downloads it
+   - Runs sandwich classification
+   - Stores result in DynamoDB
+   - Moves image to `processed/` folder
+4. Process repeats continuously
+
+**Advantages of this approach:**
+- No Lambda complexity
+- Easy to debug (just check the script output)
+- No cold starts
+- Can run on your local machine for testing
+- Only uses EC2, S3, and DynamoDB
+
+**Configuration:**
+Edit these variables in the code if needed:
+- `CHECK_INTERVAL`: How often to check for new images (default: 30 seconds)
+- `UNPROCESSED_PREFIX`: Where to look for new images (default: "uploads/")
+- `PROCESSED_PREFIX`: Where to move processed images (default: "processed/")

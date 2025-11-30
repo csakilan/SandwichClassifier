@@ -3,11 +3,14 @@ import json
 from datetime import datetime
 from inference_sdk import InferenceHTTPClient
 import os
+import time
 
 # Configuration - Update these names to match your AWS resources
-S3_BUCKET_NAME = "images-1"
-DYNAMODB_TABLE_NAME = "storage1"
-ROBOFLOW_API_KEY = "YOUR_ROBOFLOW_API_KEY"  # Replace with your API key
+S3_BUCKET_NAME = "default-images-1asdfx"
+DYNAMODB_TABLE_NAME = "default-storage1asdfx"
+PROCESSED_PREFIX = "processed/"  # Folder to move processed images to
+UNPROCESSED_PREFIX = "uploads/"  # Folder where new images are uploaded
+CHECK_INTERVAL = 30  # Seconds between checks for new images
 
 # Initialize AWS clients
 s3_client = boto3.client('s3')
@@ -17,25 +20,50 @@ table = dynamodb.Table(DYNAMODB_TABLE_NAME)
 # Initialize Roboflow client
 CLIENT = InferenceHTTPClient(
     api_url="https://serverless.roboflow.com",
-    api_key=ROBOFLOW_API_KEY
 )
 
-def lambda_handler(event, context):
+
+def get_unprocessed_images():
     """
-    AWS Lambda function triggered by S3 upload events.
-    Classifies images and stores results in DynamoDB.
+    Lists all images in the unprocessed folder of the S3 bucket.
+    Returns a list of image keys.
     """
-    
-    # Get S3 bucket and object key from the event
-    for record in event['Records']:
-        bucket = record['s3']['bucket']['name']
-        key = record['s3']['object']['key']
+    try:
+        response = s3_client.list_objects_v2(
+            Bucket=S3_BUCKET_NAME,
+            Prefix=UNPROCESSED_PREFIX
+        )
         
-        print(f"Processing image: {key} from bucket: {bucket}")
+        if 'Contents' not in response:
+            return []
         
-        # Download image from S3 to /tmp (Lambda's temporary storage)
-        local_path = f'/tmp/{os.path.basename(key)}'
-        s3_client.download_file(bucket, key, local_path)
+        # Filter for image files only
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+        images = [
+            obj['Key'] for obj in response['Contents']
+            if any(obj['Key'].lower().endswith(ext) for ext in image_extensions)
+            and obj['Key'] != UNPROCESSED_PREFIX  # Skip the folder itself
+        ]
+
+        return images
+    except Exception as e:
+        print(f"Error listing S3 objects: {e}")
+        return []
+
+
+def process_image(image_key):
+    """
+    Downloads image from S3, runs classification, stores result in DynamoDB,
+    and moves the image to the processed folder.
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"Processing image: {image_key}")
+        
+        # Download image from S3
+        local_path = f'/tmp/{os.path.basename(image_key)}'
+        s3_client.download_file(S3_BUCKET_NAME, image_key, local_path)
+        print(f"Downloaded to: {local_path}")
         
         # Run inference on the image
         result = CLIENT.infer(local_path, model_id="sandwich-tqrld/1")
@@ -44,52 +72,89 @@ def lambda_handler(event, context):
         is_sandwich = result['predictions'] and len(result['predictions']) > 0
         
         # Prepare data for DynamoDB
+        classification = 'SANDWICH' if is_sandwich else 'NOT_SANDWICH'
         item = {
-            'image_key': key,
-            'timestamp': datetime.utcnow().isoformat(),
-            'is_sandwich': is_sandwich,
-            'classification': 'SANDWICH' if is_sandwich else 'NOT_SANDWICH',
-            'predictions': json.dumps(result['predictions']),
-            'bucket': bucket
+            'id': os.path.basename(image_key),
+            'result': classification
         }
         
-        # Add confidence score if sandwich detected
         if is_sandwich:
-            item['confidence'] = str(result['predictions'][0]['confidence'])
+            print(f"✓ SANDWICH DETECTED - Confidence: {result['predictions'][0]['confidence']:.2%}")
+        else:
+            print(f"✗ NOT A SANDWICH")
         
         # Store result in DynamoDB
         table.put_item(Item=item)
+        print(f"Stored in DynamoDB: {classification}")
         
-        print(f"Result: {item['classification']}")
-        print(f"Stored in DynamoDB: {item}")
+        # Move image to processed folder
+        new_key = image_key.replace(UNPROCESSED_PREFIX, PROCESSED_PREFIX)
+        s3_client.copy_object(
+            Bucket=S3_BUCKET_NAME,
+            CopySource={'Bucket': S3_BUCKET_NAME, 'Key': image_key},
+            Key=new_key
+        )
+        s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=image_key)
+        print(f"Moved to: {new_key}")
         
         # Clean up temporary file
         os.remove(local_path)
-    
-    return {
-        'statusCode': 200,
-        'body': json.dumps('Processing complete')
-    }
+        
+        print(f"{'='*60}\n")
+        return True
+        
+    except Exception as e:
+        print(f"Error processing image {image_key}: {e}")
+        return False
 
 
-# For local testing
-def test_local(image_path):
+def monitor_s3_bucket():
     """
-    Test function to run locally without AWS Lambda.
+    Continuously monitors the S3 bucket for new images and processes them.
+    Run this on your EC2 instance.
     """
-    result = CLIENT.infer(image_path, model_id="sandwich-tqrld/1")
+    print(f"Starting S3 monitor for bucket: {S3_BUCKET_NAME}")
+    print(f"Watching folder: {UNPROCESSED_PREFIX}")
+    print(f"Check interval: {CHECK_INTERVAL} seconds")
+    print(f"Press Ctrl+C to stop\n")
     
-    is_sandwich = result['predictions'] and len(result['predictions']) > 0
-    
-    print(f"Image: {image_path}")
-    print(f"Result: {'THIS IS A SANDWICH' if is_sandwich else 'THIS ISN\\'T A SANDWICH'}")
-    
-    if is_sandwich:
-        print(f"Confidence: {result['predictions'][0]['confidence']:.2%}")
-    
-    return result
+    try:
+        while True:
+            # Get list of unprocessed images
+            images = get_unprocessed_images()
+            
+            if images:
+                print(f"Found {len(images)} image(s) to process")
+                for image_key in images:
+                    process_image(image_key)
+            else:
+                print(f"No new images. Checking again in {CHECK_INTERVAL} seconds...")
+            
+            # Wait before next check
+            time.sleep(CHECK_INTERVAL)
+            
+    except KeyboardInterrupt:
+        print("\n\nMonitoring stopped by user")
+    except Exception as e:
+        print(f"\n\nError in monitoring loop: {e}")
+
+
+def test_single_image(image_key):
+    """
+    Test function to process a single image from S3.
+    """
+    print(f"Testing single image: {image_key}")
+    success = process_image(image_key)
+    if success:
+        print("Test completed successfully!")
+    else:
+        print("Test failed!")
 
 
 if __name__ == "__main__":
-    # Local testing
-    test_local('DataImages/hamSandwich.jpg')
+    # Start monitoring the S3 bucket
+    # This will run continuously until you stop it
+    monitor_s3_bucket()
+    
+    # For testing a single image, comment out the line above and uncomment below:
+    # test_single_image('uploads/test-sandwich.jpg')
