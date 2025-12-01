@@ -5,6 +5,8 @@ CLIENT = InferenceHTTPClient(
     api_key="ZFtUgbaxUbTvna51Ypc0"
 )
 
+#hello
+
 baseURL = 'DataImages/'
 # result = CLIENT.infer(baseURL+'cat.jpeg', model_id="sandwich-tqrld/1")
 # result = CLIENT.infer(baseURL+'hamSandwich.jpg', model_id="sandwich-tqrld/1")
