@@ -90,7 +90,7 @@ def process_image(image_key):
         print(f"Stored in DynamoDB: {classification}")
         
         # Move image to processed folder
-        new_key = image_key.replace(UNPROCESSED_PREFIX, PROCESSED_PREFIX)
+        new_key = PROCESSED_PREFIX + os.path.basename(image_key)
         s3_client.copy_object(
             Bucket=S3_BUCKET_NAME,
             CopySource={'Bucket': S3_BUCKET_NAME, 'Key': image_key},
