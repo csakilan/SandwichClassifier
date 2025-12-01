@@ -5,6 +5,7 @@ from inference_sdk import InferenceHTTPClient
 import os
 import time
 #hi guys
+# helo 
 # Configuration - Update these names to match your AWS resources
 S3_BUCKET_NAME = "default-images-1asdfx"
 DYNAMODB_TABLE_NAME = "default-storage1asdfx"
