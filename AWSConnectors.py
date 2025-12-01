@@ -6,22 +6,24 @@ import os
 import time
 
 # Configuration - Update these names to match your AWS resources
-S3_BUCKET_NAME = "default-images-1asdfx"
-DYNAMODB_TABLE_NAME = "default-storage1asdfx"
+S3_BUCKET_NAME = "default-my-app-bucket-asdfasdfce"
+DYNAMODB_TABLE_NAME = "default-my-table"
 PROCESSED_PREFIX = "processed/"  # Folder to move processed images to
-UNPROCESSED_PREFIX = "uploads/"  # Folder where new images are uploaded
-CHECK_INTERVAL = 30  # Seconds between checks for new images
+UNPROCESSED_PREFIX = ""  # Root folder - empty string means bucket root
+CHECK_INTERVAL = 5  # Seconds between checks for new images
 
 # Initialize AWS clients
 s3_client = boto3.client('s3')
-dynamodb = boto3.resource('dynamodb')
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
 
 # Initialize Roboflow client
 CLIENT = InferenceHTTPClient(
     api_url="https://serverless.roboflow.com",
+    api_key="ZFtUgbaxUbTvna51Ypc0"
 )
 
+# hello there
 
 def get_unprocessed_images():
     """
