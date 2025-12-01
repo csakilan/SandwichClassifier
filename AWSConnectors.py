@@ -7,7 +7,7 @@ import time
 #hi guys
 # heo 
 # Configuration - Update these names to match your AWS resources
-S3_BUCKET_NAME = "default-images-1asdfx"
+S3_BUCKET_NAME = "default-s3-rmc-fuckerrrr"
 DYNAMODB_TABLE_NAME = "default-storage1asdfx"
 PROCESSED_PREFIX = "processed/"  # Folder to move processed images to
 UNPROCESSED_PREFIX = "uploads/"  # Folder where new images are uploaded
@@ -15,12 +15,13 @@ CHECK_INTERVAL = 30  # Seconds between checks for new images
 
 # Initialize AWS clients
 s3_client = boto3.client('s3')
-dynamodb = boto3.resource('dynamodb')
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
-
+#AWSConnectors.py
 # Initialize Roboflow client
 CLIENT = InferenceHTTPClient(
     api_url="https://serverless.roboflow.com",
+    api_key="ZFtUgbaxUbTvna51Ypc0"
 )
 
 
@@ -35,6 +36,9 @@ def get_unprocessed_images():
             Prefix=UNPROCESSED_PREFIX
         )
         
+
+
+        
         if 'Contents' not in response:
             return []
         
@@ -42,9 +46,10 @@ def get_unprocessed_images():
         image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
         images = [
             obj['Key'] for obj in response['Contents']
-            if any(obj['Key'].lower().endswith(ext) for ext in image_extensions)
-            and obj['Key'] != UNPROCESSED_PREFIX  # Skip the folder itself
+           
         ]
+
+        print("Unprocessed images found:", images)
 
         return images
     except Exception as e:
@@ -123,6 +128,7 @@ def monitor_s3_bucket():
         while True:
             # Get list of unprocessed images
             images = get_unprocessed_images()
+
             
             if images:
                 print(f"Found {len(images)} image(s) to process")
