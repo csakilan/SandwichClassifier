@@ -6,8 +6,8 @@ import os
 import time
 
 # Configuration - Update these names to match your AWS resources
-S3_BUCKET_NAME = "default-my-app-bucket-sse"
-DYNAMODB_TABLE_NAME = "default-my-table-sse"
+S3_BUCKET_NAME = "default-my-app-bucket-abcde"
+DYNAMODB_TABLE_NAME = "default-my-table-abcde"
 PROCESSED_PREFIX = "processed/"  # Folder to move processed images to
 UNPROCESSED_PREFIX = ""  # Root folder - empty string means bucket root
 CHECK_INTERVAL = 5  # Seconds between checks for new images
