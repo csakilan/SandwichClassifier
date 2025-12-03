@@ -44,8 +44,8 @@ def get_unprocessed_images():
         image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
         images = [
             obj['Key'] for obj in response['Contents']
-            if any(obj['Key'].lower().endswith(ext) for ext in image_extensions)
-            and obj['Key'] != UNPROCESSED_PREFIX  # Skip the folder itself
+            # if any(obj['Key'].lower().endswith(ext) for ext in image_extensions)
+            # and obj['Key'] != UNPROCESSED_PREFIX  # Skip the folder itself
         ]
 
         return images
