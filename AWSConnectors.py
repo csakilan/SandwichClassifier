@@ -7,11 +7,12 @@ import time
 #hi guys
 # heo 
 # Configuration - Update these names to match your AWS resources
-S3_BUCKET_NAME = "default-s3-rmc-fuckerrrr"
-DYNAMODB_TABLE_NAME = "default-storage1asdfx"
+S3_BUCKET_NAME = "default-image-data-storage"
+
+DYNAMODB_TABLE_NAME = "default-results"
 PROCESSED_PREFIX = "processed/"  # Folder to move processed images to
-UNPROCESSED_PREFIX = "uploads/"  # Folder where new images are uploaded
-CHECK_INTERVAL = 30  # Seconds between checks for new images
+UNPROCESSED_PREFIX = ""  # Root folder - empty string means bucket root
+CHECK_INTERVAL = 5  # Seconds between checks for new images
 
 # Initialize AWS clients
 s3_client = boto3.client('s3')
@@ -24,6 +25,7 @@ CLIENT = InferenceHTTPClient(
     api_key="ZFtUgbaxUbTvna51Ypc0"
 )
 
+# hello there
 
 def get_unprocessed_images():
     """
@@ -95,7 +97,7 @@ def process_image(image_key):
         print(f"Stored in DynamoDB: {classification}")
         
         # Move image to processed folder
-        new_key = image_key.replace(UNPROCESSED_PREFIX, PROCESSED_PREFIX)
+        new_key = PROCESSED_PREFIX + os.path.basename(image_key)
         s3_client.copy_object(
             Bucket=S3_BUCKET_NAME,
             CopySource={'Bucket': S3_BUCKET_NAME, 'Key': image_key},
